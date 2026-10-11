@@ -1,17 +1,27 @@
- -- ============================================================
+-- ============================================================
 --  Darkest Custom — Database Schema
---  MySQL 5.7+ / MariaDB 10.3+
---  Run once: mysql -u root -p < schema.sql
+--  Import into your chosen database (no CREATE DB / USE inside).
+--  Idempotent: safe to re-run. WARNING: drops existing tables.
 -- ============================================================
 
-CREATE DATABASE IF NOT EXISTS darkest_custom
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE darkest_custom;
+SET NAMES utf8mb4;
+SET time_zone = '+01:00';
+SET FOREIGN_KEY_CHECKS = 0;
 
 -- ------------------------------------------------------------
---  admins — who can log into /admin
+--  Drop in reverse dependency order
+-- ------------------------------------------------------------
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS settings;
+DROP TABLE IF EXISTS admins;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- ------------------------------------------------------------
+--  admins
 -- ------------------------------------------------------------
 CREATE TABLE admins (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -20,24 +30,24 @@ CREATE TABLE admins (
   name            VARCHAR(100) NOT NULL,
   created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_login_at   TIMESTAMP NULL
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
---  categories — the 11 product categories from the flyer
+--  categories
 -- ------------------------------------------------------------
 CREATE TABLE categories (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name            VARCHAR(100) NOT NULL,
   slug            VARCHAR(100) NOT NULL UNIQUE,
-  icon            VARCHAR(100),          -- filename in /assets/img/icons
+  icon            VARCHAR(100),
   sort_order      INT DEFAULT 0,
   is_active       TINYINT(1) DEFAULT 1,
   created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_active_sort (is_active, sort_order)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
---  products — sellable items
+--  products
 -- ------------------------------------------------------------
 CREATE TABLE products (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -46,43 +56,39 @@ CREATE TABLE products (
   slug            VARCHAR(200) NOT NULL UNIQUE,
   description     TEXT,
   base_price      DECIMAL(10,2) NOT NULL,
-  image           VARCHAR(255),          -- main product photo
-  mockup_image    VARCHAR(255),          -- blank template for customizer
-  variants        JSON,                  -- {"sizes":["S","M","L"],"colors":["White","Navy"]}
+  image           VARCHAR(255),
+  mockup_image    VARCHAR(255),
+  variants        JSON,
   is_active       TINYINT(1) DEFAULT 1,
   sort_order      INT DEFAULT 0,
   created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT,
   INDEX idx_active_cat (is_active, category_id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
---  orders — one row per customer order
+--  orders
 -- ------------------------------------------------------------
 CREATE TABLE orders (
   id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  order_ref           VARCHAR(30) NOT NULL UNIQUE,   -- DC-2026-0001
+  order_ref           VARCHAR(30) NOT NULL UNIQUE,
 
-  -- Customer info (denormalized — guest checkout, no customers table)
   customer_name       VARCHAR(100) NOT NULL,
   customer_phone      VARCHAR(20)  NOT NULL,
   customer_email      VARCHAR(150),
   delivery_address    TEXT         NOT NULL,
   delivery_state      VARCHAR(50)  NOT NULL,
 
-  -- Money (all in NGN)
   subtotal            DECIMAL(10,2) NOT NULL,
   delivery_fee        DECIMAL(10,2) NOT NULL DEFAULT 0,
   total               DECIMAL(10,2) NOT NULL,
 
-  -- Payment
   payment_status      ENUM('pending','paid','failed','refunded') NOT NULL DEFAULT 'pending',
-  payment_ref         VARCHAR(100) NULL,            -- Paystack reference
-  payment_method      VARCHAR(30)  NULL,            -- card, transfer, ussd
+  payment_ref         VARCHAR(100) NULL,
+  payment_method      VARCHAR(30)  NULL,
   paid_at             TIMESTAMP    NULL,
 
-  -- Fulfillment
   fulfillment_status  ENUM('new','in_production','ready','delivered','cancelled')
                         NOT NULL DEFAULT 'new',
   customer_notes      TEXT,
@@ -95,56 +101,55 @@ CREATE TABLE orders (
   INDEX idx_fulfillment (fulfillment_status),
   INDEX idx_created     (created_at),
   INDEX idx_ref         (order_ref)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
---  order_items — one row per product in an order
+--  order_items
 -- ------------------------------------------------------------
 CREATE TABLE order_items (
   id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   order_id            INT UNSIGNED NOT NULL,
   product_id          INT UNSIGNED NOT NULL,
 
-  -- Snapshot at time of order (so history doesn't break if product changes)
   product_name        VARCHAR(200) NOT NULL,
   unit_price          DECIMAL(10,2) NOT NULL,
   quantity            INT UNSIGNED NOT NULL DEFAULT 1,
 
-  -- Customer's choice
   selected_size       VARCHAR(50),
   selected_color      VARCHAR(50),
 
-  -- The customization
-  design_file         VARCHAR(255),    -- /uploads/designs/uuid.png (raw upload)
-  preview_image       VARCHAR(255),    -- /uploads/previews/uuid.png (flattened on mockup)
+  design_file         VARCHAR(255),
+  preview_image       VARCHAR(255),
   customization_notes TEXT,
 
   FOREIGN KEY (order_id)   REFERENCES orders(id)   ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
   INDEX idx_order (order_id)
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
---  settings — key/value config editable from /admin
+--  settings
 -- ------------------------------------------------------------
 CREATE TABLE settings (
   `key`        VARCHAR(100) PRIMARY KEY,
   `value`      TEXT,
   updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
 --  Seed data
 -- ============================================================
 
--- Default admin: email=admin@darkestcustom.com  password=ChangeMe123!
--- IMPORTANT: change password immediately after first login.
+-- Placeholder admin. Password hash below is NOT valid — replace it
+-- before login, OR use admin/setup.php (browser-based, safer).
+-- Generate a real hash with:
+--   php -r "echo password_hash('YourPassword', PASSWORD_BCRYPT);"
 INSERT INTO admins (email, password_hash, name) VALUES
 ('admin@darkestcustom.com',
- '$2y$10$e0NRzP6m8vKzZ9Y1qXlQ8uJ6nZ0KzYc3sHk8wqXvJvV5rN0mQz8yG',  -- bcrypt of "ChangeMe123!"
+ '$2y$10$REPLACE_THIS_WITH_A_REAL_BCRYPT_HASH_BEFORE_LOGIN_ATTEMPT',
  'Darkest Admin');
 
--- The 11 categories from your flyer
+-- Categories
 INSERT INTO categories (name, slug, icon, sort_order) VALUES
 ('Clothing',      'clothing',      'tshirt.svg',   1),
 ('Caps',          'caps',          'cap.svg',      2),
@@ -158,14 +163,14 @@ INSERT INTO categories (name, slug, icon, sort_order) VALUES
 ('Tags & Labels', 'tags-labels',   'tag.svg',      10),
 ('Gifts & More',  'gifts-more',    'box.svg',      11);
 
--- Default settings
+-- Settings — currency symbol as raw UTF-8 bytes (0xE282A6 = ₦)
 INSERT INTO settings (`key`, `value`) VALUES
 ('site_name',              'Darkest Custom'),
 ('site_tagline',           'Your Ideas. Our Creativity. Your Style. Your Way.'),
 ('whatsapp_number',        '2347035770759'),
 ('contact_email',          'hello@darkestcustom.com'),
 ('business_address',       'Asaba, Delta State, Nigeria'),
-('currency_symbol',        '₦'),
+('currency_symbol',        0xE282A6),
 ('delivery_fee_default',   '2500'),
 ('delivery_fee_lagos',     '3500'),
 ('paystack_public_key',    ''),
