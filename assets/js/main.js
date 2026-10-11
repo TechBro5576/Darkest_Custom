@@ -1,15 +1,21 @@
 /* ============================================================
    Darkest Custom — Site interactions
-   All logic lives inside one IIFE. No PHP in this file.
+   Single IIFE. No PHP. No emoji. No dependencies.
    ============================================================ */
 
 (function () {
   'use strict';
 
   // ------------------------------------------------------------
+  //  Utility: safe query helpers
+  // ------------------------------------------------------------
+  const $  = (sel, ctx = document) => ctx.querySelector(sel);
+  const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+
+  // ------------------------------------------------------------
   //  Navbar shadow on scroll
   // ------------------------------------------------------------
-  const navbar = document.getElementById('siteNavbar');
+  const navbar = $('#siteNavbar');
   if (navbar) {
     const onScroll = () => {
       navbar.classList.toggle('scrolled', window.scrollY > 8);
@@ -19,14 +25,14 @@
   }
 
   // ------------------------------------------------------------
-  //  Close mobile menu after a nav link is clicked
+  //  Close mobile nav after a link is tapped
   // ------------------------------------------------------------
-  const navCollapse = document.getElementById('navMain');
+  const navCollapse = $('#navMain');
   if (navCollapse) {
-    navCollapse.querySelectorAll('a').forEach(link => {
+    $$('a', navCollapse).forEach(link => {
       link.addEventListener('click', () => {
         if (window.innerWidth < 992 && navCollapse.classList.contains('show')) {
-          const toggler = document.querySelector('.navbar-toggler');
+          const toggler = $('.navbar-toggler');
           if (toggler) toggler.click();
         }
       });
@@ -36,7 +42,7 @@
   // ------------------------------------------------------------
   //  Reveal on scroll
   // ------------------------------------------------------------
-  const reveals = document.querySelectorAll('.reveal');
+  const reveals = $$('.reveal');
   if ('IntersectionObserver' in window && reveals.length) {
     const io = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
@@ -55,34 +61,43 @@
   // ------------------------------------------------------------
   //  Smooth scroll for in-page anchors
   // ------------------------------------------------------------
-  document.querySelectorAll('a[href^="#"]').forEach(link => {
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  $$('a[href^="#"]').forEach(link => {
     const href = link.getAttribute('href');
     if (!href || href === '#') return;
+
     link.addEventListener('click', (e) => {
-      const target = document.querySelector(href);
-      if (target) {
-        e.preventDefault();
-        const top = target.getBoundingClientRect().top + window.scrollY - 80;
-        window.scrollTo({ top, behavior: 'smooth' });
-      }
+      let target = null;
+      try { target = document.querySelector(href); } catch { return; }
+      if (!target) return;
+
+      e.preventDefault();
+      const top = target.getBoundingClientRect().top + window.scrollY - 80;
+
+      window.scrollTo({
+        top,
+        behavior: prefersReduced ? 'auto' : 'smooth',
+      });
     });
   });
 
   // ------------------------------------------------------------
-  //  Image error fallback
+  //  Image error fallback — collapse broken images cleanly
   // ------------------------------------------------------------
-  document.querySelectorAll('img').forEach(img => {
+  $$('img').forEach(img => {
     img.addEventListener('error', () => {
-      img.style.display = 'none';
+      img.style.opacity = '0';
+      img.style.visibility = 'hidden';
     });
   });
 
   // ------------------------------------------------------------
-  //  Mobile sticky CTA visibility
+  //  Mobile sticky CTA — shows after hero, hides near footer
   // ------------------------------------------------------------
-  const stickyCta = document.getElementById('mobileStickyCta');
+  const stickyCta = $('#mobileStickyCta');
   if (stickyCta) {
-    const hero = document.querySelector('.hero');
+    const hero = $('.hero');
     const onScroll = () => {
       if (!hero) return;
       const past = window.scrollY > hero.offsetHeight * 0.9;
@@ -96,8 +111,7 @@
   // ------------------------------------------------------------
   //  Hero image parallax (desktop only, respects reduced motion)
   // ------------------------------------------------------------
-  const heroImg = document.querySelector('.hero-image-wrap img');
-  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const heroImg = $('.hero-image-wrap > img');
   if (heroImg && !prefersReduced && window.matchMedia('(min-width: 992px)').matches) {
     let raf = false;
     window.addEventListener('scroll', () => {
@@ -105,30 +119,33 @@
       raf = true;
       requestAnimationFrame(() => {
         const y = Math.min(window.scrollY * 0.06, 40);
-        heroImg.style.transform = `translateY(${y}px) scale(1.02)`;
+        heroImg.style.transform = `translateY(${y}px) scale(1.03)`;
         raf = false;
       });
     }, { passive: true });
   }
 
   // ------------------------------------------------------------
-  //  Smart WhatsApp float label
-  //  Reads the phone number from a data attribute on the anchor —
-  //  never from inline PHP in this file.
+  //  Smart WhatsApp float — label updates by section
+  //  Reads phone number from data attribute (never from inline PHP)
   // ------------------------------------------------------------
-  const waFloat = document.getElementById('waFloat');
-  const waLabel = document.getElementById('waLabel');
+  const waFloat = $('#waFloat');
+  const waLabel = $('#waLabel');
   if (waFloat && waLabel) {
-    const waNumber = waFloat.dataset.waNumber || waFloat.href.match(/wa\.me\/(\d+)/)?.[1] || '';
-    const sections = [
-      { sel: '.hero',               text: 'Need a quote?' },
-      { sel: '#categories',         text: 'Not sure? Ask us' },
-      { sel: '#quote',              text: 'Prefer WhatsApp?' },
-      { sel: '.section-bulk',       text: 'Bulk order help' },
-      { sel: '.section-customizer', text: 'Need design help?' },
+    const waNumber = waFloat.dataset.waNumber
+      || (waFloat.href.match(/wa\.me\/(\d+)/) || [])[1]
+      || '';
+
+    const sectionMap = [
+      { sel: '.hero',                text: 'Need a quote?' },
+      { sel: '#categories',          text: 'Not sure? Ask us' },
+      { sel: '.section-customizer',  text: 'Need design help?' },
+      { sel: '.section-bulk',        text: 'Bulk order help' },
+      { sel: '#quote',               text: 'Prefer WhatsApp?' },
+      { sel: '#faq',                 text: 'Still have questions?' },
     ];
 
-    const setWaLabel = (text) => {
+    const setLabel = (text) => {
       waLabel.textContent = text;
       if (waNumber) {
         waFloat.href = `https://wa.me/${waNumber}?text=${encodeURIComponent(text + ' — from Darkest Custom')}`;
@@ -138,54 +155,68 @@
     if ('IntersectionObserver' in window) {
       const io = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const match = sections.find(s => document.querySelector(s.sel) === entry.target);
-            if (match) setWaLabel(match.text);
-          }
+          if (!entry.isIntersecting) return;
+          const match = sectionMap.find(s => $(s.sel) === entry.target);
+          if (match) setLabel(match.text);
         });
-      }, { threshold: 0.5 });
+      }, { threshold: 0.5, rootMargin: '-80px 0px -40% 0px' });
 
-      sections.forEach(s => {
-        const el = document.querySelector(s.sel);
+      sectionMap.forEach(s => {
+        const el = $(s.sel);
         if (el) io.observe(el);
       });
     }
   }
 
   // ------------------------------------------------------------
-  //  Wishlist (localStorage)
+  //  Wishlist (localStorage-backed)
   // ------------------------------------------------------------
-  const wishKey = 'darkest_wishlist';
-  const readWish  = () => { try { return JSON.parse(localStorage.getItem(wishKey) || '[]'); } catch { return []; } };
-  const writeWish = (arr) => { try { localStorage.setItem(wishKey, JSON.stringify(arr)); } catch {} };
+  const WISH_KEY = 'darkest_wishlist';
+  const readWish = () => {
+    try { return JSON.parse(localStorage.getItem(WISH_KEY) || '[]'); }
+    catch { return []; }
+  };
+  const writeWish = (arr) => {
+    try { localStorage.setItem(WISH_KEY, JSON.stringify(arr)); } catch {}
+  };
 
-  document.querySelectorAll('.product-wish').forEach(btn => {
+  $$('.product-wish').forEach(btn => {
     const id = btn.dataset.wish;
     if (!id) return;
+
     if (readWish().includes(id)) btn.classList.add('active');
+
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+
       const list = readWish();
       const idx = list.indexOf(id);
-      if (idx === -1) { list.push(id); btn.classList.add('active'); }
-      else            { list.splice(idx, 1); btn.classList.remove('active'); }
+
+      if (idx === -1) {
+        list.push(id);
+        btn.classList.add('active');
+      } else {
+        list.splice(idx, 1);
+        btn.classList.remove('active');
+      }
       writeWish(list);
     });
   });
 
   // ------------------------------------------------------------
-  //  Live activity ticker rotation
+  //  Live activity ticker — rotates through real-sounding messages
   // ------------------------------------------------------------
-  const tickerEl = document.getElementById('activityTicker');
+  const tickerEl = $('#activityTicker');
   if (tickerEl) {
     const messages = [
-      'Someone in Lagos just ordered a Custom Mug · 12 orders in the last 24 hours',
-      'Someone in Abuja just customized a T-Shirt · printing in Asaba',
-      'Someone in Port Harcourt just ordered a Branded Cap · 3 mugs left in this week’s batch',
-      'Someone in Asaba just uploaded a logo · average reply time: 8 minutes',
-      'Someone in Kano just ordered a Gift Box · delivered in 3 days',
+      'Someone in Lagos just ordered a Custom Mug — 12 orders in the last 24 hours',
+      'Someone in Abuja just customized a T-Shirt — printing in Asaba',
+      'Someone in Port Harcourt just ordered a Branded Cap — 3 mugs left in this week\u2019s batch',
+      'Someone in Asaba just uploaded a logo — average reply time: 8 minutes',
+      'Someone in Kano just ordered a Gift Box — delivered in 3 days',
     ];
+
     let i = 0;
     setInterval(() => {
       i = (i + 1) % messages.length;
@@ -194,35 +225,53 @@
         tickerEl.textContent = messages[i];
         tickerEl.classList.remove('is-swapping');
       }, 300);
-    }, 4500);
+    }, 5000);
   }
 
   // ------------------------------------------------------------
-  //  Customizer teaser demo
+  //  Customizer teaser — live logo upload + size control
+  //  Matches the redesigned mug structure in index.php
   // ------------------------------------------------------------
-  const demoUpload = document.getElementById('demoLogoUpload');
-  const demoLogo   = document.getElementById('customizerLogo');
-  const demoSize   = document.getElementById('demoLogoSize');
+  const demoUpload = $('#demoLogoUpload');
+  const demoLogo   = $('#customizerLogo');
+  const demoSize   = $('#demoLogoSize');
+  const MAX_BYTES  = 8 * 1024 * 1024;
+
+  const applyLogoSize = (px) => {
+    if (!demoLogo) return;
+    if (demoLogo.classList.contains('has-image')) {
+      demoLogo.style.width  = px + 'px';
+      demoLogo.style.height = px + 'px';
+    } else {
+      demoLogo.style.fontSize = Math.round(px * 0.24) + 'px';
+    }
+  };
 
   if (demoUpload && demoLogo) {
     demoUpload.addEventListener('change', (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-      if (file.size > 8 * 1024 * 1024) {
-        alert('File must be under 8MB.');
+
+      if (file.size > MAX_BYTES) {
+        alert('File must be under 8 MB.');
+        demoUpload.value = '';
         return;
       }
+
+      const okTypes = ['image/png', 'image/jpeg', 'image/svg+xml'];
+      if (!okTypes.includes(file.type)) {
+        alert('Please upload a PNG, JPG, or SVG.');
+        demoUpload.value = '';
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (ev) => {
         demoLogo.textContent = '';
         demoLogo.style.backgroundImage = `url(${ev.target.result})`;
         demoLogo.classList.add('has-image');
-        // Preserve current size
-        if (demoSize) {
-          const size = parseInt(demoSize.value, 10);
-          demoLogo.style.width  = size + 'px';
-          demoLogo.style.height = size + 'px';
-        }
+
+        if (demoSize) applyLogoSize(parseInt(demoSize.value, 10));
       };
       reader.readAsDataURL(file);
     });
@@ -230,24 +279,17 @@
 
   if (demoSize && demoLogo) {
     demoSize.addEventListener('input', (e) => {
-      const size = parseInt(e.target.value, 10);
-      if (demoLogo.classList.contains('has-image')) {
-        demoLogo.style.width  = size + 'px';
-        demoLogo.style.height = size + 'px';
-      } else {
-        demoLogo.style.fontSize = (size * 0.24) + 'px';
-      }
+      applyLogoSize(parseInt(e.target.value, 10));
     });
   }
 
   // ------------------------------------------------------------
-  //  Quote form submit
-  //  Endpoint: /api/quote-submit.php
-  //  Phone number for WhatsApp handoff comes from the form’s
-  //  data-wa-number attribute — no PHP inside this file.
+  //  Quote form — client validation + AJAX submit
+  //  Reads WhatsApp number from data attribute, never inline PHP
   // ------------------------------------------------------------
-  const quoteForm  = document.getElementById('quoteForm');
-  const quoteToast = document.getElementById('quoteToast');
+  const quoteForm  = $('#quoteForm');
+  const quoteToast = $('#quoteToast');
+
   if (quoteForm) {
     const waNumber = quoteForm.dataset.waNumber || '';
 
@@ -263,11 +305,12 @@
       const phone    = (phoneEl?.value || '').trim();
       const interest = (interestEl?.value || '').trim();
 
-      let valid = true;
       [nameEl, phoneEl, interestEl].forEach(el => el && el.classList.remove('is-error'));
-      if (name.length < 2)                        { nameEl?.classList.add('is-error');     valid = false; }
-      if (phone.replace(/\D/g, '').length < 10)   { phoneEl?.classList.add('is-error');    valid = false; }
-      if (!interest)                              { interestEl?.classList.add('is-error'); valid = false; }
+
+      let valid = true;
+      if (name.length < 2)                       { nameEl?.classList.add('is-error');     valid = false; }
+      if (phone.replace(/\D/g, '').length < 10)  { phoneEl?.classList.add('is-error');    valid = false; }
+      if (!interest)                             { interestEl?.classList.add('is-error'); valid = false; }
       if (!valid) return;
 
       const btn = quoteForm.querySelector('button[type="submit"]');
@@ -275,7 +318,11 @@
       if (btn) { btn.disabled = true; btn.innerHTML = 'Sending…'; }
 
       try {
-        const res  = await fetch('/api/quote-submit.php', { method: 'POST', body: new FormData(quoteForm) });
+        const res  = await fetch('/api/quote-submit.php', {
+          method: 'POST',
+          body: new FormData(quoteForm),
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
         const data = await res.json().catch(() => ({ ok: false }));
 
         if (data.ok) {
@@ -284,6 +331,7 @@
             quoteToast.hidden = false;
             setTimeout(() => { quoteToast.hidden = true; }, 5000);
           }
+
           if (waNumber) {
             const text = encodeURIComponent(
               `Hi Darkest Custom, I just submitted a quote request.\n` +
@@ -302,6 +350,40 @@
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
       }
+    });
+
+    // Live: clear error styling as user fixes a field
+    ['name', 'phone', 'interest'].forEach(field => {
+      const el = quoteForm.elements[field];
+      if (!el) return;
+      el.addEventListener('input', () => el.classList.remove('is-error'));
+      el.addEventListener('change', () => el.classList.remove('is-error'));
+    });
+  }
+
+  // ------------------------------------------------------------
+  //  Smooth reveal of card media (avoid image pop-in)
+  // ------------------------------------------------------------
+  const lazyImgs = $$('img[loading="lazy"]');
+  if ('IntersectionObserver' in window && lazyImgs.length) {
+    const imgIo = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          if (img.complete) {
+            img.style.opacity = '1';
+          } else {
+            img.addEventListener('load', () => { img.style.opacity = '1'; }, { once: true });
+          }
+          imgIo.unobserve(img);
+        }
+      });
+    }, { rootMargin: '100px' });
+
+    lazyImgs.forEach(img => {
+      img.style.opacity = '0';
+      img.style.transition = 'opacity 400ms ease';
+      imgIo.observe(img);
     });
   }
 
